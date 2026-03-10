@@ -15,8 +15,11 @@ curl -fsSL https://raw.githubusercontent.com/pubino/findir/main/install.sh | bas
 ```bash
 git clone https://github.com/pubino/findir.git
 cd findir
-cp findir /usr/local/bin/
+mkdir -p ~/.local/bin
+cp findir ~/.local/bin/
 ```
+
+> **Note:** Make sure `~/.local/bin` is in your `PATH`. If not, add `export PATH="$HOME/.local/bin:$PATH"` to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.).
 
 ## Usage
 
