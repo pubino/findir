@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  shellcheck:
+    name: ShellCheck Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+      - name: Run ShellCheck
+        run: shellcheck findir
+
+  test-docker-bash32:
+    name: Tests (bash 3.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: docker build -f Dockerfile -t findir-test-bash32 . && docker run --rm findir-test-bash32
+
+  test-docker-bash52:
+    name: Tests (bash 5.2)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: docker build -f Dockerfile.bash5 -t findir-test-bash52 . && docker run --rm findir-test-bash52
+
+  test-macos:
+    name: Tests (macOS native)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install bats
+        run: brew install bats-core
+      - name: Run ShellCheck
+        run: |
+          brew install shellcheck
+          shellcheck findir
+      - name: Run tests
+        run: bats tests/

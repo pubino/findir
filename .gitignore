@@ -1,0 +1,6 @@
+.findir-backups/
+*.swp
+*.swo
+*~
+.DS_Store
+.claude/

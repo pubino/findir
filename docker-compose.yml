@@ -1,0 +1,15 @@
+services:
+  test-bash32:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: findir-test-bash32
+
+  test-bash52:
+    build:
+      context: .
+      dockerfile: Dockerfile.bash5
+    container_name: findir-test-bash52
+    depends_on:
+      test-bash32:
+        condition: service_completed_successfully

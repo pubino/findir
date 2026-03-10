@@ -1,0 +1,676 @@
+#!/usr/bin/env bash
+# findir — Find & Replace literal strings across files
+# https://github.com/pubino/findir
+# License: MIT
+
+set -euo pipefail
+
+readonly FINDIR_VERSION="1.0.0"
+readonly FINDIR_REPO="pubino/findir"
+readonly FINDIR_RAW_URL="https://raw.githubusercontent.com/${FINDIR_REPO}/main/findir"
+
+# ─── Color Setup ────────────────────────────────────────────────────────────────
+
+_setup_colors() {
+    if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-}" != "dumb" ]] && [[ "${FINDIR_NO_COLOR:-}" != "1" ]]; then
+        COLOR_ENABLED=1
+    else
+        COLOR_ENABLED=0
+    fi
+
+    if [[ "$COLOR_ENABLED" -eq 1 ]]; then
+        BOLD=$(tput bold 2>/dev/null || printf '\033[1m')
+        DIM=$(tput dim 2>/dev/null || printf '\033[2m')
+        RESET=$(tput sgr0 2>/dev/null || printf '\033[0m')
+        RED=$(tput setaf 1 2>/dev/null || printf '\033[31m')
+        GREEN=$(tput setaf 2 2>/dev/null || printf '\033[32m')
+        YELLOW=$(tput setaf 3 2>/dev/null || printf '\033[33m')
+        BLUE=$(tput setaf 4 2>/dev/null || printf '\033[34m')
+        MAGENTA=$(tput setaf 5 2>/dev/null || printf '\033[35m')
+        CYAN=$(tput setaf 6 2>/dev/null || printf '\033[36m')
+        WHITE=$(tput setaf 7 2>/dev/null || printf '\033[37m')
+        BG_RED=$(tput setab 1 2>/dev/null || printf '\033[41m')
+        BG_GREEN=$(tput setab 2 2>/dev/null || printf '\033[42m')
+    else
+        BOLD="" DIM="" RESET=""
+        RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" WHITE=""
+        BG_RED="" BG_GREEN=""
+    fi
+}
+
+# ─── Logging ────────────────────────────────────────────────────────────────────
+
+LOG_QUIET=0
+LOG_NORMAL=1
+LOG_VERBOSE=2
+LOG_DEBUG=3
+VERBOSITY=$LOG_NORMAL
+
+log_error()   { printf '%s\n' "${BOLD}${RED}error:${RESET} $*" >&2; }
+log_warn()    { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "${YELLOW}warning:${RESET} $*" >&2 || true; }
+log_info()    { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "$*" || true; }
+log_verbose() { [[ $VERBOSITY -ge $LOG_VERBOSE ]] && printf '%s\n' "${CYAN}$*${RESET}" || true; }
+log_debug()   { [[ $VERBOSITY -ge $LOG_DEBUG ]] && printf '%s\n' "${DIM}${MAGENTA}debug: $*${RESET}" >&2 || true; }
+
+log_stat()    { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "${BLUE}$*${RESET}" || true; }
+log_success() { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "${BOLD}${GREEN}$*${RESET}" || true; }
+log_header()  { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "${BOLD}${CYAN}$*${RESET}" || true; }
+log_drybanner() { [[ $VERBOSITY -ge $LOG_NORMAL ]] && printf '%s\n' "${BOLD}${MAGENTA}$*${RESET}" || true; }
+
+# ─── Argument Defaults ──────────────────────────────────────────────────────────
+
+SEARCH=""
+REPLACE=""
+TARGET_DIR="."
+DRY_RUN=0
+INTERACTIVE=0
+IGNORE_CASE=0
+DANGER_MODE=0
+MAX_DEPTH=""
+FILE_PATTERN=""
+BACKUP_DIR=".findir-backups"
+RESTORE_FILE=""
+DO_SELF_UPDATE=0
+DO_SELF_REMOVE=0
+SHOW_VERSION=0
+SHOW_HELP=0
+
+# ─── Usage / Help ───────────────────────────────────────────────────────────────
+
+usage() {
+    cat <<'USAGE'
+findir — Find & Replace literal strings across files
+
+USAGE:
+  findir [OPTIONS] SEARCH REPLACE [DIRECTORY]
+  findir -s SEARCH -r REPLACE [-d DIRECTORY] [OPTIONS]
+
+POSITIONAL ARGUMENTS:
+  SEARCH        Literal string to find
+  REPLACE       Replacement string
+  DIRECTORY     Target directory (default: current directory)
+
+OPTIONS:
+  -s, --search STRING       Search string
+  -r, --replace STRING      Replace string
+  -d, --directory DIR       Target directory (default: .)
+  -n, --dry-run             Preview changes without modifying files
+  -i, --interactive         Confirm each file before replacing
+  -I, --ignore-case         Case-insensitive search (literal match, ignoring case)
+      --danger              Skip backup creation
+      --depth N             Limit directory traversal depth
+  -p, --pattern PATTERN     Only process files matching glob pattern
+      --backup-dir DIR      Custom backup directory (default: .findir-backups)
+      --restore FILE        Restore from a backup manifest file
+      --no-color            Disable colored output
+  -v, --verbose             Increase verbosity
+  -q, --quiet               Suppress non-error output
+      --debug               Enable debug output
+      --self-update         Update findir to latest version
+      --self-remove         Uninstall findir
+  -V, --version             Show version
+  -h, --help                Show this help
+
+EXAMPLES:
+  findir "old_func" "new_func" ./src
+  findir -n "foo" "bar"                     # dry-run in current dir
+  findir -i -s "TODO" -r "DONE" -d ./docs  # interactive
+  findir --depth 2 -p "*.py" "os.path" "pathlib.Path" ./project
+  findir --restore .findir-backups/20260310-120000/manifest.txt
+
+ENVIRONMENT:
+  NO_COLOR        Disable colors when set (any value)
+  FINDIR_NO_COLOR  Disable colors when set to 1
+USAGE
+}
+
+# ─── Argument Parsing ───────────────────────────────────────────────────────────
+
+parse_args() {
+    local positional=()
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s|--search)
+                [[ $# -lt 2 ]] && { log_error "--search requires an argument"; exit 1; }
+                SEARCH="$2"; shift 2 ;;
+            -r|--replace)
+                [[ $# -lt 2 ]] && { log_error "--replace requires an argument"; exit 1; }
+                REPLACE="$2"; shift 2 ;;
+            -d|--directory)
+                [[ $# -lt 2 ]] && { log_error "--directory requires an argument"; exit 1; }
+                TARGET_DIR="$2"; shift 2 ;;
+            -n|--dry-run)
+                DRY_RUN=1; shift ;;
+            -i|--interactive)
+                INTERACTIVE=1; shift ;;
+            -I|--ignore-case)
+                IGNORE_CASE=1; shift ;;
+            --danger)
+                DANGER_MODE=1; shift ;;
+            --depth)
+                [[ $# -lt 2 ]] && { log_error "--depth requires an argument"; exit 1; }
+                MAX_DEPTH="$2"; shift 2 ;;
+            -p|--pattern)
+                [[ $# -lt 2 ]] && { log_error "--pattern requires an argument"; exit 1; }
+                FILE_PATTERN="$2"; shift 2 ;;
+            --backup-dir)
+                [[ $# -lt 2 ]] && { log_error "--backup-dir requires an argument"; exit 1; }
+                BACKUP_DIR="$2"; shift 2 ;;
+            --restore)
+                [[ $# -lt 2 ]] && { log_error "--restore requires an argument"; exit 1; }
+                RESTORE_FILE="$2"; shift 2 ;;
+            --no-color)
+                COLOR_ENABLED=0
+                BOLD="" DIM="" RESET=""
+                RED="" GREEN="" YELLOW="" BLUE="" MAGENTA="" CYAN="" WHITE=""
+                BG_RED="" BG_GREEN=""
+                shift ;;
+            -v|--verbose)
+                VERBOSITY=$LOG_VERBOSE; shift ;;
+            -q|--quiet)
+                VERBOSITY=$LOG_QUIET; shift ;;
+            --debug)
+                VERBOSITY=$LOG_DEBUG; shift ;;
+            --self-update)
+                DO_SELF_UPDATE=1; shift ;;
+            --self-remove)
+                DO_SELF_REMOVE=1; shift ;;
+            -V|--version)
+                SHOW_VERSION=1; shift ;;
+            -h|--help)
+                SHOW_HELP=1; shift ;;
+            --)
+                shift; positional+=("$@"); break ;;
+            -*)
+                log_error "Unknown option: $1"
+                printf '\n' >&2
+                usage >&2
+                exit 1 ;;
+            *)
+                positional+=("$1"); shift ;;
+        esac
+    done
+
+    # Assign positional arguments
+    if [[ ${#positional[@]} -ge 1 && -z "$SEARCH" ]]; then
+        SEARCH="${positional[0]}"
+    fi
+    if [[ ${#positional[@]} -ge 2 && -z "$REPLACE" ]]; then
+        REPLACE="${positional[1]}"
+    fi
+    if [[ ${#positional[@]} -ge 3 && "$TARGET_DIR" == "." ]]; then
+        TARGET_DIR="${positional[2]}"
+    fi
+    if [[ ${#positional[@]} -gt 3 ]]; then
+        log_error "Too many positional arguments (expected at most 3)"
+        exit 1
+    fi
+}
+
+# ─── Validation ─────────────────────────────────────────────────────────────────
+
+validate_args() {
+    if [[ -z "$SEARCH" ]]; then
+        log_error "Search string is required"
+        printf '\n' >&2
+        usage >&2
+        exit 1
+    fi
+
+    # REPLACE can be empty (deletion)
+
+    if [[ ! -d "$TARGET_DIR" ]]; then
+        log_error "Directory does not exist: $TARGET_DIR"
+        exit 1
+    fi
+
+    if [[ -n "$MAX_DEPTH" ]]; then
+        if ! [[ "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
+            log_error "--depth must be a non-negative integer"
+            exit 1
+        fi
+    fi
+}
+
+# ─── File Discovery ─────────────────────────────────────────────────────────────
+
+discover_files() {
+    local find_args=()
+    find_args+=("$TARGET_DIR")
+
+    # Prune backup directory and .git from search
+    find_args+=(-path "*/.findir-backups" -prune -o)
+    find_args+=(-path "*/.git" -prune -o)
+
+    if [[ -n "$MAX_DEPTH" ]]; then
+        find_args+=(-maxdepth "$MAX_DEPTH")
+    fi
+
+    find_args+=(-type f)
+
+    if [[ -n "$FILE_PATTERN" ]]; then
+        find_args+=(-name "$FILE_PATTERN")
+    fi
+
+    find_args+=(-print)
+
+    find "${find_args[@]}" 2>/dev/null
+}
+
+is_binary() {
+    local f="$1"
+    local mime
+    mime=$(file --mime-encoding "$f" 2>/dev/null) || return 1
+    case "$mime" in
+        *binary*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+file_contains_search() {
+    local f="$1"
+    local grep_flags="-qF"
+    if [[ "$IGNORE_CASE" -eq 1 ]]; then
+        grep_flags="-qFi"
+    fi
+    grep $grep_flags -- "$SEARCH" "$f" 2>/dev/null
+}
+
+# ─── Replacement Engine ─────────────────────────────────────────────────────────
+
+do_replace() {
+    local f="$1"
+    FINDIR_SEARCH="$SEARCH" FINDIR_REPLACE="$REPLACE" FINDIR_ICASE="$IGNORE_CASE" \
+        perl -i'' -pe '
+            BEGIN {
+                $s = quotemeta($ENV{"FINDIR_SEARCH"});
+                $r = $ENV{"FINDIR_REPLACE"};
+                $ic = $ENV{"FINDIR_ICASE"};
+            }
+            if ($ic) { s/$s/$r/gi; } else { s/$s/$r/g; }
+        ' "$f"
+}
+
+generate_diff() {
+    local f="$1"
+    local tmpfile
+    tmpfile=$(mktemp) || { log_error "Failed to create temp file"; return 1; }
+
+    cp "$f" "$tmpfile"
+    FINDIR_SEARCH="$SEARCH" FINDIR_REPLACE="$REPLACE" FINDIR_ICASE="$IGNORE_CASE" \
+        perl -i'' -pe '
+            BEGIN {
+                $s = quotemeta($ENV{"FINDIR_SEARCH"});
+                $r = $ENV{"FINDIR_REPLACE"};
+                $ic = $ENV{"FINDIR_ICASE"};
+            }
+            if ($ic) { s/$s/$r/gi; } else { s/$s/$r/g; }
+        ' "$tmpfile"
+
+    local diff_output
+    diff_output=$(diff -u "$f" "$tmpfile" 2>/dev/null) || true
+    rm -f "$tmpfile"
+    printf '%s' "$diff_output"
+}
+
+colorize_diff() {
+    local line
+    while IFS= read -r line; do
+        case "$line" in
+            ---*)  printf '%s\n' "${BOLD}${WHITE}${line}${RESET}" ;;
+            +++*)  printf '%s\n' "${BOLD}${WHITE}${line}${RESET}" ;;
+            @@*)   printf '%s\n' "${CYAN}${line}${RESET}" ;;
+            -*)    printf '%s\n' "${RED}${line}${RESET}" ;;
+            +*)    printf '%s\n' "${GREEN}${line}${RESET}" ;;
+            *)     printf '%s\n' "$line" ;;
+        esac
+    done
+}
+
+# ─── Backup System ──────────────────────────────────────────────────────────────
+
+BACKUP_TIMESTAMP=""
+BACKUP_SESSION_DIR=""
+BACKUP_MANIFEST=""
+
+init_backup_session() {
+    if [[ "$DANGER_MODE" -eq 1 ]]; then
+        log_debug "Danger mode: skipping backup"
+        return 0
+    fi
+
+    BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+    # Resolve TARGET_DIR to absolute path for consistent backup paths
+    local abs_target
+    abs_target=$(cd "$TARGET_DIR" && pwd)
+    BACKUP_SESSION_DIR="${abs_target}/${BACKUP_DIR}/${BACKUP_TIMESTAMP}"
+    BACKUP_MANIFEST="${BACKUP_SESSION_DIR}/manifest.txt"
+
+    mkdir -p "$BACKUP_SESSION_DIR"
+    log_debug "Backup session: $BACKUP_SESSION_DIR"
+}
+
+backup_file() {
+    if [[ "$DANGER_MODE" -eq 1 ]]; then
+        return 0
+    fi
+
+    local original="$1"
+
+    # Compute path relative to TARGET_DIR
+    local abs_target
+    abs_target=$(cd "$TARGET_DIR" && pwd)
+    local abs_original
+    abs_original=$(cd "$(dirname "$original")" && pwd)/$(basename "$original")
+
+    # Strip target dir prefix to get relative path
+    local rel_path="${abs_original#"$abs_target"/}"
+    if [[ "$rel_path" == "$abs_original" ]]; then
+        # Fallback: use basename if not under target dir
+        rel_path=$(basename "$original")
+    fi
+
+    local backup_path="${BACKUP_SESSION_DIR}/${rel_path}"
+    local backup_parent
+    backup_parent=$(dirname "$backup_path")
+
+    mkdir -p "$backup_parent"
+    cp "$original" "$backup_path"
+    printf '%s\t%s\n' "$abs_original" "$backup_path" >> "$BACKUP_MANIFEST"
+    log_debug "Backed up: $original -> $backup_path"
+}
+
+do_restore() {
+    local manifest="$1"
+
+    if [[ ! -f "$manifest" ]]; then
+        log_error "Manifest file not found: $manifest"
+        exit 1
+    fi
+
+    log_header "Restoring from: $manifest"
+
+    local count=0
+    local failed=0
+    while IFS=$'\t' read -r original_path backup_path; do
+        [[ -z "$original_path" ]] && continue
+        if [[ ! -f "$backup_path" ]]; then
+            log_error "Backup file missing: $backup_path"
+            failed=$((failed + 1))
+            continue
+        fi
+        local parent
+        parent=$(dirname "$original_path")
+        mkdir -p "$parent" 2>/dev/null || true
+        cp "$backup_path" "$original_path"
+        log_verbose "Restored: $original_path"
+        count=$((count + 1))
+    done < "$manifest"
+
+    log_success "Restored $count file(s)"
+    if [[ $failed -gt 0 ]]; then
+        log_error "Failed to restore $failed file(s)"
+        return 1
+    fi
+}
+
+# ─── Interactive Mode ───────────────────────────────────────────────────────────
+
+prompt_interactive() {
+    local f="$1"
+    local diff_output="$2"
+
+    printf '\n'
+    log_header "─── File: ${BOLD}${WHITE}${f}${RESET}"
+    if [[ -n "$diff_output" ]]; then
+        printf '%s\n' "$diff_output" | colorize_diff
+    fi
+    printf '\n'
+
+    while true; do
+        printf '%s' "${BOLD}Apply change? [y]es / [n]o / [a]ll / [q]uit: ${RESET}" >/dev/tty
+        local answer
+        read -r answer </dev/tty 2>/dev/null || answer="n"
+        case "$answer" in
+            y|Y|yes) return 0 ;;
+            n|N|no)  return 1 ;;
+            a|A|all) INTERACTIVE=0; return 0 ;;
+            q|Q|quit)
+                log_info "Aborted by user."
+                exit 0 ;;
+            *)
+                printf '%s\n' "  Please enter y, n, a, or q" >/dev/tty ;;
+        esac
+    done
+}
+
+# ─── Self-Update ────────────────────────────────────────────────────────────────
+
+do_self_update() {
+    log_header "Checking for updates..."
+
+    local tmpfile
+    tmpfile=$(mktemp) || { log_error "Failed to create temp file"; exit 1; }
+
+    if ! curl -fsSL "$FINDIR_RAW_URL" -o "$tmpfile" 2>/dev/null; then
+        rm -f "$tmpfile"
+        log_error "Failed to download update from $FINDIR_RAW_URL"
+        exit 1
+    fi
+
+    local remote_version
+    remote_version=$(grep -m1 '^readonly FINDIR_VERSION=' "$tmpfile" | cut -d'"' -f2)
+
+    if [[ -z "$remote_version" ]]; then
+        rm -f "$tmpfile"
+        log_error "Could not determine remote version"
+        exit 1
+    fi
+
+    if [[ "$remote_version" == "$FINDIR_VERSION" ]]; then
+        rm -f "$tmpfile"
+        log_success "Already up to date (v${FINDIR_VERSION})"
+        return 0
+    fi
+
+    log_info "Updating: v${FINDIR_VERSION} -> v${remote_version}"
+
+    local self_path
+    self_path=$(command -v findir 2>/dev/null || echo "$0")
+    self_path=$(cd "$(dirname "$self_path")" && pwd)/$(basename "$self_path")
+
+    chmod +x "$tmpfile"
+
+    if [[ -w "$(dirname "$self_path")" ]]; then
+        mv "$tmpfile" "$self_path"
+    else
+        log_info "Requires elevated permissions..."
+        sudo mv "$tmpfile" "$self_path"
+    fi
+
+    log_success "Updated to v${remote_version}"
+}
+
+# ─── Self-Remove ────────────────────────────────────────────────────────────────
+
+do_self_remove() {
+    local self_path
+    self_path=$(command -v findir 2>/dev/null || echo "$0")
+    self_path=$(cd "$(dirname "$self_path")" && pwd)/$(basename "$self_path")
+
+    printf '%s' "${BOLD}${RED}Remove findir from ${self_path}? [y/N]: ${RESET}" >/dev/tty
+    local answer
+    read -r answer </dev/tty 2>/dev/null || answer="n"
+
+    case "$answer" in
+        y|Y|yes)
+            if [[ -w "$(dirname "$self_path")" ]]; then
+                rm -f "$self_path"
+            else
+                log_info "Requires elevated permissions..."
+                sudo rm -f "$self_path"
+            fi
+            log_success "findir has been removed."
+            ;;
+        *)
+            log_info "Removal cancelled."
+            ;;
+    esac
+}
+
+# ─── Summary ────────────────────────────────────────────────────────────────────
+
+print_summary() {
+    local total_files="$1"
+    local modified_files="$2"
+    local skipped_binary="$3"
+    local skipped_interactive="$4"
+
+    printf '\n'
+    log_header "─── Summary ───"
+    log_stat "  Files scanned:    $total_files"
+    log_stat "  Files modified:   $modified_files"
+    if [[ "$skipped_binary" -gt 0 ]]; then
+        log_stat "  Skipped (binary): $skipped_binary"
+    fi
+    if [[ "$skipped_interactive" -gt 0 ]]; then
+        log_stat "  Skipped (user):   $skipped_interactive"
+    fi
+    if [[ "$DANGER_MODE" -eq 0 && "$DRY_RUN" -eq 0 && "$modified_files" -gt 0 && -n "$BACKUP_MANIFEST" ]]; then
+        log_info "  Backup manifest:  $BACKUP_MANIFEST"
+        log_info "  Restore with:     findir --restore $BACKUP_MANIFEST"
+    fi
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log_drybanner "  (dry run — no files were modified)"
+    fi
+    if [[ "$modified_files" -gt 0 && "$DRY_RUN" -eq 0 ]]; then
+        log_success "Done!"
+    fi
+}
+
+# ─── Main Logic ─────────────────────────────────────────────────────────────────
+
+do_find_replace() {
+    validate_args
+
+    local search_display="${BOLD}${RED}${BG_RED} ${SEARCH} ${RESET}"
+    local replace_display="${BOLD}${GREEN}${BG_GREEN} ${REPLACE} ${RESET}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        log_drybanner "═══ DRY RUN ═══"
+    fi
+
+    log_header "Search:  ${search_display}"
+    log_header "Replace: ${replace_display}"
+    log_header "Directory: ${BOLD}${WHITE}${TARGET_DIR}${RESET}"
+    [[ -n "$FILE_PATTERN" ]] && log_header "Pattern: $FILE_PATTERN"
+    [[ -n "$MAX_DEPTH" ]] && log_header "Max depth: $MAX_DEPTH"
+    printf '\n'
+
+    # Initialize backup session if not dry-run
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+        init_backup_session
+    fi
+
+    local total_files=0
+    local modified_files=0
+    local skipped_binary=0
+    local skipped_interactive=0
+
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+
+        log_debug "Checking: $f"
+
+        # Skip binary files
+        if is_binary "$f"; then
+            log_verbose "Skipping binary: $f"
+            skipped_binary=$((skipped_binary + 1))
+            continue
+        fi
+
+        # Skip files that don't contain the search string
+        if ! file_contains_search "$f"; then
+            continue
+        fi
+
+        total_files=$((total_files + 1))
+        log_verbose "Match: $f"
+
+        # Generate diff
+        local diff_output
+        diff_output=$(generate_diff "$f")
+
+        if [[ -z "$diff_output" ]]; then
+            log_debug "No changes for: $f"
+            continue
+        fi
+
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            log_info "${BOLD}${WHITE}$f${RESET}"
+            printf '%s\n' "$diff_output" | colorize_diff
+            printf '\n'
+            modified_files=$((modified_files + 1))
+            continue
+        fi
+
+        if [[ "$INTERACTIVE" -eq 1 ]]; then
+            if ! prompt_interactive "$f" "$diff_output"; then
+                skipped_interactive=$((skipped_interactive + 1))
+                continue
+            fi
+        fi
+
+        # Backup and replace
+        backup_file "$f"
+        do_replace "$f"
+        modified_files=$((modified_files + 1))
+        log_info "${BOLD}${WHITE}$f${RESET} ${GREEN}updated${RESET}"
+
+    done < <(discover_files)
+
+    print_summary "$total_files" "$modified_files" "$skipped_binary" "$skipped_interactive"
+}
+
+# ─── Main Dispatch ──────────────────────────────────────────────────────────────
+
+main() {
+    # Set up locale for UTF-8
+    if [[ -z "${LC_CTYPE:-}" ]]; then
+        export LC_CTYPE="UTF-8"
+    fi
+
+    _setup_colors
+    parse_args "$@"
+
+    if [[ "$SHOW_HELP" -eq 1 ]]; then
+        usage
+        exit 0
+    fi
+
+    if [[ "$SHOW_VERSION" -eq 1 ]]; then
+        printf 'findir %s\n' "$FINDIR_VERSION"
+        exit 0
+    fi
+
+    if [[ "$DO_SELF_UPDATE" -eq 1 ]]; then
+        do_self_update
+        exit 0
+    fi
+
+    if [[ "$DO_SELF_REMOVE" -eq 1 ]]; then
+        do_self_remove
+        exit 0
+    fi
+
+    if [[ -n "$RESTORE_FILE" ]]; then
+        do_restore "$RESTORE_FILE"
+        exit 0
+    fi
+
+    do_find_replace
+}
+
+main "$@"
