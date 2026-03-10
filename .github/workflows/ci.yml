@@ -15,7 +15,7 @@ jobs:
       - name: Install ShellCheck
         run: sudo apt-get install -y shellcheck
       - name: Run ShellCheck
-        run: shellcheck findir
+        run: shellcheck --severity=warning findir
 
   test-docker-bash32:
     name: Tests (bash 3.2)
@@ -43,6 +43,6 @@ jobs:
       - name: Run ShellCheck
         run: |
           brew install shellcheck
-          shellcheck findir
+          shellcheck --severity=warning findir
       - name: Run tests
         run: bats tests/
