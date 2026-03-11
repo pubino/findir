@@ -42,6 +42,9 @@ findir -p "*.py" --depth 3 "os.path" "pathlib.Path" ./project
 # Skip backups (danger mode)
 findir --danger "old" "new" ./src
 
+# Compact file list only (no diffs)
+findir --dry-run --summary "TODO" "DONE" ./docs
+
 # Restore from backup
 findir --restore .findir-backups/20260310-120000/manifest.txt
 ```
@@ -57,6 +60,7 @@ findir --restore .findir-backups/20260310-120000/manifest.txt
 | `-d, --directory DIR` | Target directory (default: `.`) |
 | `-n, --dry-run` | Preview only (no prompt to apply) |
 | `-y, --yes` | Skip preview, apply changes immediately |
+| `--summary` | List affected files only (no inline diffs) |
 | `-i, --interactive` | Confirm each file before replacing |
 | `-I, --ignore-case` | Case-insensitive search |
 | `--danger` | Skip backup creation |

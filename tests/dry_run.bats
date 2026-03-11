@@ -105,6 +105,37 @@ teardown() {
     assert_output_contains -- "--yes"
 }
 
+# ─── --summary flag ──────────────────────────────────────────────────────────
+
+@test "--summary with dry-run shows file list without diffs" {
+    create_file "a.txt" "hello a"
+    create_file "b.txt" "hello b"
+    run "$FINDIR" --no-color --dry-run --summary "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_output_contains "a.txt"
+    assert_output_contains "b.txt"
+    assert_output_not_contains "-hello"
+    assert_output_not_contains "+goodbye"
+}
+
+@test "--summary with default mode shows file list without diffs" {
+    create_file "a.txt" "hello a"
+    create_file "b.txt" "hello b"
+    run "$FINDIR" --no-color --danger --summary "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_output_contains "a.txt"
+    assert_output_contains "b.txt"
+    assert_output_not_contains "-hello"
+    assert_output_not_contains "+goodbye"
+    assert_output_contains "No changes applied"
+}
+
+@test "--summary flag is documented in help" {
+    run "$FINDIR" --help
+    [ "$status" -eq 0 ]
+    assert_output_contains -- "--summary"
+}
+
 @test "default mode does not create backups when declined" {
     create_file "test.txt" "hello world"
     run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"

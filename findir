@@ -67,6 +67,7 @@ INTERACTIVE=0
 IGNORE_CASE=0
 DANGER_MODE=0
 SKIP_PREVIEW=0
+SUMMARY_MODE=0
 MAX_DEPTH=""
 FILE_PATTERN=""
 BACKUP_DIR=".findir-backups"
@@ -100,6 +101,7 @@ OPTIONS:
   -d, --directory DIR       Target directory (default: .)
   -n, --dry-run             Preview only (no prompt to apply)
   -y, --yes                 Skip preview, apply changes immediately
+      --summary               List affected files only (no inline diffs)
   -i, --interactive         Confirm each file before replacing
   -I, --ignore-case         Case-insensitive search (literal match, ignoring case)
       --danger              Skip backup creation
@@ -150,6 +152,8 @@ parse_args() {
                 DRY_RUN=1; shift ;;
             -y|--yes)
                 SKIP_PREVIEW=1; shift ;;
+            --summary)
+                SUMMARY_MODE=1; shift ;;
             -i|--interactive)
                 INTERACTIVE=1; shift ;;
             -I|--ignore-case)
@@ -602,9 +606,13 @@ run_pass() {
         fi
 
         if [[ "$mode" == "preview" ]]; then
-            log_info "${BOLD}${WHITE}$f${RESET}"
-            printf '%s\n' "$diff_output" | colorize_diff
-            printf '\n'
+            if [[ "$SUMMARY_MODE" -eq 1 ]]; then
+                log_info "  $f"
+            else
+                log_info "${BOLD}${WHITE}$f${RESET}"
+                printf '%s\n' "$diff_output" | colorize_diff
+                printf '\n'
+            fi
             modified_files=$((modified_files + 1))
             continue
         fi
