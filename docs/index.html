@@ -321,6 +321,34 @@
     padding: 10px 20px;
   }
 
+  /* ── Warning ── */
+
+  .warning-box {
+    background: rgba(248, 81, 73, 0.08);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-left: 4px solid var(--red);
+    border-radius: 8px;
+    padding: 20px 24px;
+  }
+
+  .warning-box p {
+    max-width: none;
+    color: var(--text-dim);
+  }
+
+  .warning-box p:last-child { margin-bottom: 0; }
+
+  .warning-box strong { color: var(--text); }
+
+  .warning-box code {
+    font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace;
+    background: var(--bg-code);
+    padding: 2px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 0.85rem;
+  }
+
   /* ── Copy button ── */
 
   .copyable {
@@ -613,6 +641,29 @@
         <code style="font-family:monospace; color:var(--cyan);">findir --restore</code> and the manifest path shown in the summary.
       </li>
     </ul>
+  </section>
+
+<!-- ════════════════════════ Warning ════════════════════════ -->
+
+  <section id="warning" class="warning-section">
+    <h2>Warning</h2>
+    <div class="warning-box">
+      <p>
+        <strong>findir performs destructive, in-place modifications to files.</strong>
+        While it creates automatic backups by default, these backups are best-effort
+        and should not be relied upon as your sole safety net.
+      </p>
+      <p>
+        Always maintain your own backups and use version control before running
+        bulk find-and-replace operations. Preview changes with the default
+        dry-run mode or <code>-n</code> before applying.
+      </p>
+      <p>
+        This software is provided "as is", without warranty of any kind, express or
+        implied. The authors are not responsible for any data loss or damage resulting
+        from its use. <strong>You are solely responsible for your data and backups.</strong>
+      </p>
+    </div>
   </section>
 
 <!-- ════════════════════════ Footer ════════════════════════ -->
