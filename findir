@@ -460,6 +460,20 @@ prompt_interactive() {
 
 # ─── Self-Update ────────────────────────────────────────────────────────────────
 
+# Compare two semver strings. Returns 0 if $1 > $2, 1 otherwise.
+version_gt() {
+    local IFS='.'
+    local i
+    # shellcheck disable=SC2206
+    local a=($1) b=($2)
+    for i in 0 1 2; do
+        local av="${a[$i]:-0}" bv="${b[$i]:-0}"
+        if [[ "$av" -gt "$bv" ]]; then return 0; fi
+        if [[ "$av" -lt "$bv" ]]; then return 1; fi
+    done
+    return 1
+}
+
 do_self_update() {
     log_header "Checking for updates..."
 
@@ -482,6 +496,12 @@ do_self_update() {
     fi
 
     if [[ "$remote_version" == "$FINDIR_VERSION" ]]; then
+        rm -f "$tmpfile"
+        log_success "Already up to date (v${FINDIR_VERSION})"
+        return 0
+    fi
+
+    if ! version_gt "$remote_version" "$FINDIR_VERSION"; then
         rm -f "$tmpfile"
         log_success "Already up to date (v${FINDIR_VERSION})"
         return 0
