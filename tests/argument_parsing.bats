@@ -44,14 +44,14 @@ teardown() {
 
 @test "accepts positional arguments: search replace dir" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --danger "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "test.txt" "goodbye world"
 }
 
 @test "accepts flag-based arguments: -s -r -d" {
     create_file "test.txt" "foo bar"
-    run "$FINDIR" --no-color --danger -s "foo" -r "baz" -d "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y -s "foo" -r "baz" -d "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "test.txt" "baz bar"
 }
@@ -94,7 +94,7 @@ teardown() {
 
 @test "-- stops option parsing" {
     create_file "test.txt" "-n hello"
-    run "$FINDIR" --no-color --danger -- "-n" "-x" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y -- "-n" "-x" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "test.txt" "-x hello"
 }

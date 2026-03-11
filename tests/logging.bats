@@ -12,7 +12,7 @@ teardown() {
 
 @test "quiet mode suppresses normal output" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --danger -q "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y -q "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     # In quiet mode there should be no summary
     assert_output_not_contains "Summary"
@@ -21,21 +21,21 @@ teardown() {
 
 @test "verbose mode shows extra info" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --danger -v "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y -v "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "Match"
 }
 
 @test "debug mode shows debug messages" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --danger --debug "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y --debug "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "debug"
 }
 
 @test "normal mode shows summary" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --danger "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "Summary"
     assert_output_contains "Files modified"
@@ -44,14 +44,14 @@ teardown() {
 @test "verbose mode shows file matches" {
     create_file "a.txt" "hello"
     create_file "b.txt" "world"
-    run "$FINDIR" --no-color --danger -v "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y -v "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "Match"
 }
 
 @test "debug mode shows backup info" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --debug "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y --debug "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "debug"
     assert_output_contains "Backup"

@@ -13,7 +13,7 @@ teardown() {
 @test "depth 1 only processes files in target directory" {
     create_file "top.txt" "hello"
     create_file "sub/nested.txt" "hello"
-    run "$FINDIR" --no-color --danger --depth 1 "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y --depth 1 "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "top.txt" "goodbye"
     assert_file_content "sub/nested.txt" "hello"
@@ -23,7 +23,7 @@ teardown() {
     create_file "top.txt" "hello"
     create_file "sub/mid.txt" "hello"
     create_file "sub/deep/bottom.txt" "hello"
-    run "$FINDIR" --no-color --danger --depth 2 "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y --depth 2 "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "top.txt" "goodbye"
     assert_file_content "sub/mid.txt" "goodbye"
@@ -35,7 +35,7 @@ teardown() {
     create_file "b/c.txt" "hello"
     create_file "b/c/d.txt" "hello"
     create_file "b/c/d/e.txt" "hello"
-    run "$FINDIR" --no-color --danger "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "a.txt" "goodbye"
     assert_file_content "b/c.txt" "goodbye"
@@ -45,7 +45,7 @@ teardown() {
 
 @test "depth 0 processes nothing (only the directory itself)" {
     create_file "top.txt" "hello"
-    run "$FINDIR" --no-color --danger --depth 0 "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y --depth 0 "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "top.txt" "hello"
 }
@@ -60,7 +60,7 @@ teardown() {
     create_file "top.py" "hello"
     create_file "top.txt" "hello"
     create_file "sub/nested.py" "hello"
-    run "$FINDIR" --no-color --danger --depth 1 -p "*.py" "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color --danger -y --depth 1 -p "*.py" "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_file_content "top.py" "goodbye"
     assert_file_content "top.txt" "hello"

@@ -12,14 +12,14 @@ teardown() {
 
 @test "creates backup directory on replace" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     [ -d ".findir-backups" ]
 }
 
 @test "creates manifest file in backup" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     local manifest
     manifest=$(find .findir-backups -name "manifest.txt" | head -1)
@@ -29,7 +29,7 @@ teardown() {
 
 @test "backup manifest contains file paths" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     local manifest
     manifest=$(find .findir-backups -name "manifest.txt" | head -1)
@@ -38,7 +38,7 @@ teardown() {
 
 @test "backup preserves original file content" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
 
     # Find the backed up file
@@ -52,7 +52,7 @@ teardown() {
 
 @test "restore brings back original content" {
     create_file "test.txt" "original content"
-    "$FINDIR" --no-color "original" "modified" "$TEST_DIR"
+    "$FINDIR" --no-color -y "original" "modified" "$TEST_DIR"
     assert_file_content "test.txt" "modified content"
 
     local manifest
@@ -66,7 +66,7 @@ teardown() {
 @test "restore works with multiple files" {
     create_file "a.txt" "hello a"
     create_file "b.txt" "hello b"
-    "$FINDIR" --no-color "hello" "bye" "$TEST_DIR"
+    "$FINDIR" --no-color -y "hello" "bye" "$TEST_DIR"
 
     local manifest
     manifest=$(find .findir-backups -name "manifest.txt" | head -1)
@@ -85,14 +85,14 @@ teardown() {
 
 @test "uses custom backup directory with --backup-dir" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color --backup-dir "my-backups" "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y --backup-dir "my-backups" "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     [ -d "my-backups" ]
 }
 
 @test "summary shows restore command" {
     create_file "test.txt" "hello world"
-    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    run "$FINDIR" --no-color -y "hello" "goodbye" "$TEST_DIR"
     [ "$status" -eq 0 ]
     assert_output_contains "Restore with"
 }

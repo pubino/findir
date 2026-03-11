@@ -63,3 +63,52 @@ teardown() {
     assert_output_contains "a.txt"
     assert_output_contains "b.txt"
 }
+
+# ─── Default preview+prompt behavior ────────────────────────────────────────────
+
+@test "default mode shows preview and does not modify files" {
+    create_file "test.txt" "hello world"
+    # Without a TTY, prompt_apply read fails and defaults to decline
+    run "$FINDIR" --no-color --danger "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_file_content "test.txt" "hello world"
+    assert_output_contains "PREVIEW"
+    assert_output_contains "No changes applied"
+}
+
+@test "default mode shows diff in preview" {
+    create_file "test.txt" "hello world"
+    run "$FINDIR" --no-color --danger "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_output_contains "-hello world"
+    assert_output_contains "+goodbye world"
+}
+
+@test "--yes skips preview and applies immediately" {
+    create_file "test.txt" "hello world"
+    run "$FINDIR" --no-color --danger -y "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_file_content "test.txt" "goodbye world"
+    assert_output_not_contains "PREVIEW"
+}
+
+@test "-y flag applies changes immediately" {
+    create_file "test.txt" "hello world"
+    run "$FINDIR" --no-color --danger -y "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_file_content "test.txt" "goodbye world"
+}
+
+@test "--yes flag is documented in help" {
+    run "$FINDIR" --help
+    [ "$status" -eq 0 ]
+    assert_output_contains -- "--yes"
+}
+
+@test "default mode does not create backups when declined" {
+    create_file "test.txt" "hello world"
+    run "$FINDIR" --no-color "hello" "goodbye" "$TEST_DIR"
+    [ "$status" -eq 0 ]
+    assert_file_content "test.txt" "hello world"
+    [ ! -d ".findir-backups" ]
+}

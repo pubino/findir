@@ -66,6 +66,7 @@ DRY_RUN=0
 INTERACTIVE=0
 IGNORE_CASE=0
 DANGER_MODE=0
+SKIP_PREVIEW=0
 MAX_DEPTH=""
 FILE_PATTERN=""
 BACKUP_DIR=".findir-backups"
@@ -95,6 +96,7 @@ OPTIONS:
   -r, --replace STRING      Replace string
   -d, --directory DIR       Target directory (default: .)
   -n, --dry-run             Preview changes without modifying files
+  -y, --yes                 Skip preview, apply changes immediately
   -i, --interactive         Confirm each file before replacing
   -I, --ignore-case         Case-insensitive search (literal match, ignoring case)
       --danger              Skip backup creation
@@ -112,7 +114,8 @@ OPTIONS:
   -h, --help                Show this help
 
 EXAMPLES:
-  findir "old_func" "new_func" ./src
+  findir "old_func" "new_func" ./src        # preview then prompt to apply
+  findir -y "old_func" "new_func" ./src     # apply immediately (no preview)
   findir -n "foo" "bar"                     # dry-run in current dir
   findir -i -s "TODO" -r "DONE" -d ./docs  # interactive
   findir --depth 2 -p "*.py" "os.path" "pathlib.Path" ./project
@@ -142,6 +145,8 @@ parse_args() {
                 TARGET_DIR="$2"; shift 2 ;;
             -n|--dry-run)
                 DRY_RUN=1; shift ;;
+            -y|--yes)
+                SKIP_PREVIEW=1; shift ;;
             -i|--interactive)
                 INTERACTIVE=1; shift ;;
             -I|--ignore-case)
@@ -552,32 +557,17 @@ print_summary() {
 
 # ─── Main Logic ─────────────────────────────────────────────────────────────────
 
-do_find_replace() {
-    validate_args
-
-    local search_display="${BOLD}${RED}${BG_RED} ${SEARCH} ${RESET}"
-    local replace_display="${BOLD}${GREEN}${BG_GREEN} ${REPLACE} ${RESET}"
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        log_drybanner "═══ DRY RUN ═══"
-    fi
-
-    log_header "Search:  ${search_display}"
-    log_header "Replace: ${replace_display}"
-    log_header "Directory: ${BOLD}${WHITE}${TARGET_DIR}${RESET}"
-    [[ -n "$FILE_PATTERN" ]] && log_header "Pattern: $FILE_PATTERN"
-    [[ -n "$MAX_DEPTH" ]] && log_header "Max depth: $MAX_DEPTH"
-    printf '\n'
-
-    # Initialize backup session if not dry-run
-    if [[ "$DRY_RUN" -eq 0 ]]; then
-        init_backup_session
-    fi
+run_pass() {
+    local mode="$1"  # "preview" or "apply"
 
     local total_files=0
     local modified_files=0
     local skipped_binary=0
     local skipped_interactive=0
+
+    if [[ "$mode" == "apply" ]]; then
+        init_backup_session
+    fi
 
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
@@ -608,7 +598,7 @@ do_find_replace() {
             continue
         fi
 
-        if [[ "$DRY_RUN" -eq 1 ]]; then
+        if [[ "$mode" == "preview" ]]; then
             log_info "${BOLD}${WHITE}$f${RESET}"
             printf '%s\n' "$diff_output" | colorize_diff
             printf '\n'
@@ -616,6 +606,7 @@ do_find_replace() {
             continue
         fi
 
+        # mode == "apply"
         if [[ "$INTERACTIVE" -eq 1 ]]; then
             if ! prompt_interactive "$f" "$diff_output"; then
                 skipped_interactive=$((skipped_interactive + 1))
@@ -631,7 +622,70 @@ do_find_replace() {
 
     done < <(discover_files)
 
-    print_summary "$total_files" "$modified_files" "$skipped_binary" "$skipped_interactive"
+    # Export counts for caller
+    RUN_TOTAL_FILES=$total_files
+    RUN_MODIFIED_FILES=$modified_files
+    RUN_SKIPPED_BINARY=$skipped_binary
+    RUN_SKIPPED_INTERACTIVE=$skipped_interactive
+}
+
+prompt_apply() {
+    printf '%s' "${BOLD}Apply changes? [Y/n]: ${RESET}" >/dev/tty 2>/dev/null || true
+    local answer
+    read -r answer </dev/tty 2>/dev/null || answer="n"
+    case "$answer" in
+        ""|y|Y|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+do_find_replace() {
+    validate_args
+
+    local search_display="${BOLD}${RED}${BG_RED} ${SEARCH} ${RESET}"
+    local replace_display="${BOLD}${GREEN}${BG_GREEN} ${REPLACE} ${RESET}"
+
+    log_header "Search:  ${search_display}"
+    log_header "Replace: ${replace_display}"
+    log_header "Directory: ${BOLD}${WHITE}${TARGET_DIR}${RESET}"
+    [[ -n "$FILE_PATTERN" ]] && log_header "Pattern: $FILE_PATTERN"
+    [[ -n "$MAX_DEPTH" ]] && log_header "Max depth: $MAX_DEPTH"
+    printf '\n'
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        # Explicit dry-run: preview only, no prompt
+        log_drybanner "═══ DRY RUN ═══"
+        DRY_RUN=1 run_pass "preview"
+        print_summary "$RUN_TOTAL_FILES" "$RUN_MODIFIED_FILES" "$RUN_SKIPPED_BINARY" "$RUN_SKIPPED_INTERACTIVE"
+        return
+    fi
+
+    if [[ "$SKIP_PREVIEW" -eq 1 ]]; then
+        # --yes: apply immediately, no preview
+        run_pass "apply"
+        print_summary "$RUN_TOTAL_FILES" "$RUN_MODIFIED_FILES" "$RUN_SKIPPED_BINARY" "$RUN_SKIPPED_INTERACTIVE"
+        return
+    fi
+
+    # Default: preview then prompt to apply
+    log_drybanner "═══ PREVIEW ═══"
+    run_pass "preview"
+    local preview_total=$RUN_TOTAL_FILES
+    local preview_modified=$RUN_MODIFIED_FILES
+    local preview_skipped_binary=$RUN_SKIPPED_BINARY
+
+    if [[ "$preview_modified" -eq 0 ]]; then
+        print_summary "$preview_total" 0 "$preview_skipped_binary" 0
+        return
+    fi
+
+    printf '\n'
+    if prompt_apply; then
+        run_pass "apply"
+        print_summary "$RUN_TOTAL_FILES" "$RUN_MODIFIED_FILES" "$RUN_SKIPPED_BINARY" "$RUN_SKIPPED_INTERACTIVE"
+    else
+        log_info "No changes applied."
+    fi
 }
 
 # ─── Main Dispatch ──────────────────────────────────────────────────────────────

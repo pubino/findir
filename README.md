@@ -24,13 +24,13 @@ cp findir ~/.local/bin/
 ## Usage
 
 ```bash
-# Positional arguments
+# Preview changes, then prompt to apply (default)
 findir "old_string" "new_string" ./src
 
-# Flag-based arguments
-findir -s "old_func" -r "new_func" -d ./project
+# Apply immediately, skip preview
+findir -y "old_func" "new_func" ./src
 
-# Dry run (preview changes)
+# Dry run (preview only, no prompt)
 findir --dry-run "TODO" "DONE" ./docs
 
 # Interactive mode (confirm each file)
@@ -46,6 +46,8 @@ findir --danger "old" "new" ./src
 findir --restore .findir-backups/20260310-120000/manifest.txt
 ```
 
+> **Note:** By default, findir shows a preview of all changes and prompts before applying. Use `-y`/`--yes` to skip the preview and apply immediately.
+
 ## Options
 
 | Flag | Description |
@@ -54,6 +56,7 @@ findir --restore .findir-backups/20260310-120000/manifest.txt
 | `-r, --replace STRING` | Replacement string |
 | `-d, --directory DIR` | Target directory (default: `.`) |
 | `-n, --dry-run` | Preview changes without modifying files |
+| `-y, --yes` | Skip preview, apply changes immediately |
 | `-i, --interactive` | Confirm each file before replacing |
 | `--danger` | Skip backup creation |
 | `--depth N` | Limit directory traversal depth |
@@ -68,6 +71,29 @@ findir --restore .findir-backups/20260310-120000/manifest.txt
 | `--self-remove` | Uninstall findir |
 | `-V, --version` | Show version |
 | `-h, --help` | Show help |
+
+## Quoting and Special Characters
+
+findir operates on **literal strings only** — no regex. Quotes, brackets, dots, and other special characters are matched and replaced exactly as given. You only need to handle normal shell quoting to pass your strings in:
+
+```bash
+# Single quotes in the string — wrap in double quotes
+findir "it's here" "it's there" ./src
+
+# Double quotes in the string — wrap in single quotes
+findir 'say "hello"' 'say "goodbye"' ./src
+
+# Both quote types — use $'...' syntax
+findir $'it\'s "here"' $'it\'s "there"' ./src
+
+# Regex metacharacters are literal (replaces the actual dot-star)
+findir "foo.*bar" "baz" ./src
+
+# Backslashes, dollar signs, brackets — all literal
+findir '$obj[0]' '$obj[1]' ./src
+```
+
+Internally, search/replace strings are passed to perl via environment variables (not command-line interpolation) and the search string is escaped with `quotemeta()`, so no characters receive special treatment.
 
 ## How It Works
 
