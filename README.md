@@ -55,9 +55,10 @@ findir --restore .findir-backups/20260310-120000/manifest.txt
 | `-s, --search STRING` | Search string |
 | `-r, --replace STRING` | Replacement string |
 | `-d, --directory DIR` | Target directory (default: `.`) |
-| `-n, --dry-run` | Preview changes without modifying files |
+| `-n, --dry-run` | Preview only (no prompt to apply) |
 | `-y, --yes` | Skip preview, apply changes immediately |
 | `-i, --interactive` | Confirm each file before replacing |
+| `-I, --ignore-case` | Case-insensitive search |
 | `--danger` | Skip backup creation |
 | `--depth N` | Limit directory traversal depth |
 | `-p, --pattern PATTERN` | Only process files matching glob pattern |
@@ -97,6 +98,7 @@ Internally, search/replace strings are passed to perl via environment variables 
 
 ## How It Works
 
+- **Preview by default**: Shows a diff preview of all changes and prompts `Apply changes? [Y/n]` before modifying any files. Use `-y`/`--yes` to apply immediately, or `-n`/`--dry-run` to preview without prompting.
 - **Search**: Uses `grep -F` for literal string matching (no regex)
 - **Replace**: Uses `perl -i -pe` with `quotemeta()` for safe literal replacement
 - **Binary detection**: Uses `file --mime-encoding` to skip binary files

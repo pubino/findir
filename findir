@@ -82,6 +82,9 @@ usage() {
     cat <<'USAGE'
 findir — Find & Replace literal strings across files
 
+By default, findir previews all changes and prompts before applying.
+Use -y/--yes to apply immediately, or -n/--dry-run to preview only.
+
 USAGE:
   findir [OPTIONS] SEARCH REPLACE [DIRECTORY]
   findir -s SEARCH -r REPLACE [-d DIRECTORY] [OPTIONS]
@@ -95,7 +98,7 @@ OPTIONS:
   -s, --search STRING       Search string
   -r, --replace STRING      Replace string
   -d, --directory DIR       Target directory (default: .)
-  -n, --dry-run             Preview changes without modifying files
+  -n, --dry-run             Preview only (no prompt to apply)
   -y, --yes                 Skip preview, apply changes immediately
   -i, --interactive         Confirm each file before replacing
   -I, --ignore-case         Case-insensitive search (literal match, ignoring case)
