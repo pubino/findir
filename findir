@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-readonly FINDIR_VERSION="1.0.0"
+readonly FINDIR_VERSION="1.1.0"
 readonly FINDIR_REPO="pubino/findir"
 readonly FINDIR_RAW_URL="https://raw.githubusercontent.com/${FINDIR_REPO}/main/findir"
 
